@@ -1,0 +1,409 @@
+{{define "panel"}}
+{{if not .Validado}}
+<div class="space-y-3">
+  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#c4622d]">Tablero</p>
+  <h2 class="font-serif text-2xl text-[#14221c]">Prevalidación Res. 154</h2>
+  <p class="text-sm leading-relaxed text-[#5c564c]">Pulse validar antes de descargar. Si algo no cumple, el detalle queda en este panel. Cada descarga vuelve a revisar el documento en el servidor.</p>
+  <ul class="space-y-2 text-sm text-[#3c3832]">
+    <li>RUT de emisor, receptor, chofer y transportista con módulo 11.</li>
+    <li>Patente del vehículo obligatoria. La del carro, solo si se informa.</li>
+    <li>Chofer siempre identificado. RUT del transportista si es un tercero.</li>
+    <li>Hora de salida HH:MM:SS. Llegada obligatoria si el viaje pasa de un día.</li>
+    <li>Origen, destino y al menos un ítem con cantidad, unidad y monto o exención.</li>
+  </ul>
+</div>
+{{else if .Errores}}
+<div role="alert" class="space-y-3">
+  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9b2c2c]">No cumple</p>
+  <h2 class="font-serif text-2xl text-[#14221c]">{{if eq (len .Errores) 1}}1 incumplimiento{{else}}{{len .Errores}} incumplimientos{{end}}</h2>
+  <ul class="space-y-2">
+    {{range .Errores}}
+    <li class="rounded-xl border border-[#f0d0d0] bg-[#fff6f4] px-3 py-2 text-sm">
+      <span class="block font-semibold text-[#7a2424]">{{.Etiqueta}}</span>
+      <span class="text-[#3c3832]">{{.Mensaje}}</span>
+    </li>
+    {{end}}
+  </ul>
+</div>
+{{else}}
+{{with .Resumen}}
+<div role="status" class="space-y-3">
+  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#215c45]">Cumple</p>
+  <h2 class="font-serif text-2xl text-[#14221c]">Lista para descargar</h2>
+  <p class="text-sm text-[#3c3832]">{{.Ruta}} · salida {{.Salida}}</p>
+  <p class="text-sm text-[#3c3832]">{{.Traslado}} · {{.Items}} ítem(s)</p>
+  <dl class="grid grid-cols-2 gap-2 text-sm">
+    <div class="rounded-xl bg-[#f3efe4] px-3 py-2"><dt class="text-[#5c564c]">Neto</dt><dd class="font-semibold">{{.Neto}}</dd></div>
+    {{if .MuestraIVA}}<div class="rounded-xl bg-[#f3efe4] px-3 py-2"><dt class="text-[#5c564c]">IVA 19%</dt><dd class="font-semibold">{{.IVA}}</dd></div>{{end}}
+    {{if .MuestraExento}}<div class="rounded-xl bg-[#f3efe4] px-3 py-2"><dt class="text-[#5c564c]">Exento</dt><dd class="font-semibold">{{.Exento}}</dd></div>{{end}}
+    {{if .MuestraNoFacturable}}<div class="rounded-xl bg-[#f3efe4] px-3 py-2"><dt class="text-[#5c564c]">No facturable</dt><dd class="font-semibold">{{.NoFacturable}}</dd></div>{{end}}
+    <div class="col-span-2 rounded-xl bg-[#14221c] px-3 py-2 text-[#f6f1e7]"><dt class="text-[#d9d0c0]">Total</dt><dd class="font-serif text-xl">{{.Total}}</dd></div>
+  </dl>
+  <p class="text-xs leading-relaxed text-[#5c564c]">El XML y el PDF son borradores de trabajo. No llevan timbre electrónico ni firma y no se envían al SII.</p>
+</div>
+{{end}}
+{{end}}
+{{end}}
+
+{{define "page"}}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Guías de despacho · Res. 154</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ["Fraunces", "Georgia", "serif"],
+            sans: ["Outfit", "ui-sans-serif", "system-ui", "sans-serif"]
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .field {
+      width: 100%;
+      border-radius: 0.7rem;
+      border: 1px solid #d9d0c0;
+      background: #fffdf8;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.925rem;
+      color: #1c1915;
+    }
+    .field:focus { outline: 2px solid transparent; border-color: #c4622d; box-shadow: 0 0 0 3px rgba(196,98,45,.18); }
+    .field-bad { border-color: #9b2c2c !important; box-shadow: 0 0 0 3px rgba(155,44,44,.15); }
+    .label-busy { display: none; }
+    button.htmx-request .label-idle { display: none; }
+    button.htmx-request .label-busy { display: inline; }
+    body { font-family: Outfit, ui-sans-serif, system-ui, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen bg-[#14221c] text-[#1c1915] font-sans">
+  <div class="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(196,98,45,.28),transparent_32%),linear-gradient(180deg,#1b2e26_0%,#101814_55%)]"></div>
+  <header class="relative mx-auto flex max-w-6xl flex-col gap-4 px-4 pb-2 pt-8 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e7b089]">DTE tipo 52 · local</p>
+      <h1 class="font-serif text-4xl text-[#f6f1e7] sm:text-5xl">Guía de despacho</h1>
+      <p class="mt-2 max-w-xl text-sm leading-relaxed text-[#d5cdc0]">Captura, valida y descarga un borrador alineado a la Res. Ex. N° 154, vigente desde el 1 de noviembre de 2026.</p>
+    </div>
+    <button type="button" onclick="cargarEjemplo()" class="rounded-full border border-[#e7b089]/50 px-4 py-2 text-sm text-[#f6f1e7] hover:bg-white/10">Cargar ejemplo</button>
+  </header>
+
+  <main class="relative mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <form id="form-guia" class="space-y-5 pb-28" method="post" action="/validar" novalidate>
+      <section class="rounded-[1.6rem] bg-[#f6f1e7] p-5 shadow-[0_20px_50px_rgba(0,0,0,.22)] sm:p-7">
+        <div class="mb-5 flex items-baseline justify-between gap-3">
+          <h2 class="font-serif text-2xl">Emisor y receptor</h2>
+          <span class="text-xs uppercase tracking-[0.14em] text-[#8a8174]">01</span>
+        </div>
+        <div class="mb-5 grid gap-4 sm:grid-cols-3">
+          <label class="block text-sm">Folio
+            <input id="folio" name="folio" inputmode="numeric" value="{{.Form.Folio}}" class="field mt-1 {{if .Mal "Folio"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">Fecha de emisión
+            <input id="fch_emis" name="fch_emis" type="date" value="{{.Form.FchEmis}}" class="field mt-1 {{if .Mal "FchEmis"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">Tipo de traslado
+            <select id="ind_traslado" name="ind_traslado" class="field mt-1 {{if .Mal "IndTraslado"}}field-bad{{end}}">
+              {{range .Tipos}}
+              <option value="{{.Codigo}}" {{if eq $.Form.IndTraslado (printf "%d" .Codigo)}}selected{{end}}>{{.Codigo}} · {{.Glosa}}</option>
+              {{end}}
+            </select>
+          </label>
+        </div>
+        <div class="grid gap-6 md:grid-cols-2">
+          <fieldset class="space-y-3">
+            <legend class="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a8174]">Emisor</legend>
+            <label class="block text-sm">RUT
+              <input id="rut_emisor" name="rut_emisor" value="{{.Form.RUTEmisor}}" placeholder="76.123.456-0" class="field mt-1 {{if .Mal "RUTEmisor"}}field-bad{{end}}" aria-required="true">
+            </label>
+            <label class="block text-sm">Razón social
+              <input id="rzn_soc" name="rzn_soc" maxlength="100" value="{{.Form.RznSoc}}" class="field mt-1 {{if .Mal "RznSoc"}}field-bad{{end}}" aria-required="true">
+            </label>
+            <label class="block text-sm">Giro
+              <input id="giro_emis" name="giro_emis" maxlength="80" value="{{.Form.GiroEmis}}" class="field mt-1 {{if .Mal "GiroEmis"}}field-bad{{end}}" aria-required="true">
+            </label>
+            <label class="block text-sm">Acteco
+              <input id="acteco" name="acteco" maxlength="6" inputmode="numeric" value="{{.Form.Acteco}}" placeholder="106101" class="field mt-1 {{if .Mal "Acteco"}}field-bad{{end}}" aria-required="true">
+              <span class="mt-1 block text-xs text-[#8a8174]">Código de actividad económica de 6 dígitos.</span>
+            </label>
+          </fieldset>
+          <fieldset class="space-y-3">
+            <legend class="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a8174]">Receptor</legend>
+            <label class="block text-sm">RUT
+              <input id="rut_recep" name="rut_recep" value="{{.Form.RUTRecep}}" placeholder="76.543.210-3" class="field mt-1 {{if .Mal "RUTRecep"}}field-bad{{end}}" aria-required="true">
+            </label>
+            <label class="block text-sm">Razón social
+              <input id="rzn_soc_recep" name="rzn_soc_recep" maxlength="100" value="{{.Form.RznSocRecep}}" class="field mt-1 {{if .Mal "RznSocRecep"}}field-bad{{end}}" aria-required="true">
+            </label>
+            <label class="block text-sm">Giro <span class="text-[#8a8174]">opcional</span>
+              <input id="giro_recep" name="giro_recep" maxlength="80" value="{{.Form.GiroRecep}}" class="field mt-1 {{if .Mal "GiroRecep"}}field-bad{{end}}">
+            </label>
+            <label class="block text-sm">Dirección comercial <span class="text-[#8a8174]">opcional</span>
+              <input id="dir_recep" name="dir_recep" maxlength="70" value="{{.Form.DirRecep}}" class="field mt-1 {{if .Mal "DirRecep"}}field-bad{{end}}">
+            </label>
+            <label class="block text-sm">Comuna <span class="text-[#8a8174]">opcional</span>
+              <input id="cmna_recep" name="cmna_recep" maxlength="20" value="{{.Form.CmnaRecep}}" class="field mt-1 {{if .Mal "CmnaRecep"}}field-bad{{end}}">
+            </label>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="rounded-[1.6rem] bg-[#f6f1e7] p-5 shadow-[0_20px_50px_rgba(0,0,0,.18)] sm:p-7">
+        <div class="mb-5 flex items-baseline justify-between">
+          <h2 class="font-serif text-2xl">Datos del conductor</h2>
+          <span class="text-xs uppercase tracking-[0.14em] text-[#8a8174]">02</span>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block text-sm">RUTChofer
+            <input id="rut_chofer" name="rut_chofer" value="{{.Form.RUTChofer}}" placeholder="15.678.932-1" class="field mt-1 {{if .Mal "RUTChofer"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">NombreChofer
+            <input id="nombre_chofer" name="nombre_chofer" maxlength="30" value="{{.Form.NombreChofer}}" class="field mt-1 {{if .Mal "NombreChofer"}}field-bad{{end}}" aria-required="true">
+            <span class="mt-1 block text-xs text-[#8a8174]">Máximo 30 caracteres, como en el esquema.</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="rounded-[1.6rem] bg-[#f6f1e7] p-5 shadow-[0_20px_50px_rgba(0,0,0,.18)] sm:p-7">
+        <div class="mb-5 flex items-baseline justify-between">
+          <h2 class="font-serif text-2xl">Datos del transporte</h2>
+          <span class="text-xs uppercase tracking-[0.14em] text-[#8a8174]">03</span>
+        </div>
+        <div class="mb-4 flex flex-wrap gap-4 text-sm">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="modo_transporte" value="propio" {{if eq .Form.ModoTransporte "propio"}}checked{{end}}> Transporte propio</label>
+          <label class="inline-flex items-center gap-2"><input id="modo_tercero" type="radio" name="modo_transporte" value="tercero" {{if eq .Form.ModoTransporte "tercero"}}checked{{end}}> Transportista tercero</label>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <label class="block text-sm">Patente
+            <input id="patente" name="patente" value="{{.Form.Patente}}" placeholder="ABCD12" maxlength="8" class="field mt-1 uppercase {{if .Mal "Patente"}}field-bad{{end}}" aria-required="true">
+            <span class="mt-1 block text-xs text-[#8a8174]">AA1111 o AAAA11.</span>
+          </label>
+          <label class="block text-sm">PatenteCarro <span class="text-[#8a8174]">opcional</span>
+            <input id="patente_carro" name="patente_carro" value="{{.Form.PatenteCarro}}" placeholder="XY1234" maxlength="8" class="field mt-1 uppercase {{if .Mal "PatenteCarro"}}field-bad{{end}}">
+          </label>
+          <label class="block text-sm">RUTTrans
+            <input id="rut_trans" name="rut_trans" value="{{.Form.RUTTrans}}" placeholder="99.999.999-9" class="field mt-1 {{if .Mal "RUTTrans"}}field-bad{{end}}">
+            <span class="mt-1 block text-xs text-[#8a8174]">Obligatorio si el tercero es distinto del emisor.</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="rounded-[1.6rem] bg-[#f6f1e7] p-5 shadow-[0_20px_50px_rgba(0,0,0,.18)] sm:p-7" x-data="{ multi: {{if eq .Form.Duracion "multidia"}}true{{else}}false{{end}} }">
+        <div class="mb-5 flex items-baseline justify-between">
+          <h2 class="font-serif text-2xl">Fechas y horas de traslado</h2>
+          <span class="text-xs uppercase tracking-[0.14em] text-[#8a8174]">04</span>
+        </div>
+        <div class="mb-4 flex flex-wrap gap-4 text-sm">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="duracion" value="mismo_dia" @change="multi = false" {{if eq .Form.Duracion "mismo_dia"}}checked{{end}}> Mismo día</label>
+          <label class="inline-flex items-center gap-2"><input id="duracion_multidia" type="radio" name="duracion" value="multidia" @change="multi = true" {{if eq .Form.Duracion "multidia"}}checked{{end}}> Más de un día</label>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <label class="block text-sm">FchSalida
+            <input id="fch_salida" name="fch_salida" type="date" value="{{.Form.FchSalida}}" class="field mt-1 {{if .Mal "FchSalida"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">HraSalida
+            <input id="hra_salida" name="hra_salida" value="{{.Form.HraSalida}}" placeholder="08:30:00" class="field mt-1 {{if .Mal "HraSalida"}}field-bad{{end}}" aria-required="true">
+            <span class="mt-1 block text-xs text-[#8a8174]">HH:MM:SS. Si omite los segundos, se completan en 00.</span>
+          </label>
+          <label class="block text-sm">FchLlegada
+            <input id="fch_llegada" name="fch_llegada" type="date" value="{{.Form.FchLlegada}}" class="field mt-1 {{if .Mal "FchLlegada"}}field-bad{{end}}">
+            <span class="mt-1 block text-xs text-[#8a8174]">Obligatoria si la llegada es posterior a la salida.</span>
+          </label>
+        </div>
+        <label class="mt-4 block text-sm" x-show="multi" x-cloak>Motivo del trayecto
+          <input id="motivo_multidia" name="motivo_multidia" maxlength="120" value="{{.Form.MotivoMultidia}}" class="field mt-1 {{if .Mal "MotivoMultidia"}}field-bad{{end}}">
+        </label>
+      </section>
+
+      <section class="rounded-[1.6rem] bg-[#f6f1e7] p-5 shadow-[0_20px_50px_rgba(0,0,0,.18)] sm:p-7">
+        <div class="mb-5 flex items-baseline justify-between">
+          <h2 class="font-serif text-2xl">Origen y destino</h2>
+          <span class="text-xs uppercase tracking-[0.14em] text-[#8a8174]">05</span>
+        </div>
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="block text-sm md:col-span-2">DirOrigen
+            <input id="dir_origen" name="dir_origen" maxlength="60" value="{{.Form.DirOrigen}}" class="field mt-1 {{if .Mal "DirOrigen"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">CmnaOrigen
+            <input id="cmna_origen" name="cmna_origen" maxlength="20" value="{{.Form.CmnaOrigen}}" class="field mt-1 {{if .Mal "CmnaOrigen"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">Ciudad de origen <span class="text-[#8a8174]">opcional</span>
+            <input id="ciudad_origen" name="ciudad_origen" maxlength="20" value="{{.Form.CiudadOrigen}}" class="field mt-1 {{if .Mal "CiudadOrigen"}}field-bad{{end}}">
+          </label>
+          <label class="block text-sm md:col-span-2">DirDest
+            <input id="dir_dest" name="dir_dest" maxlength="70" value="{{.Form.DirDest}}" class="field mt-1 {{if .Mal "DirDest"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">CmnaDest
+            <input id="cmna_dest" name="cmna_dest" maxlength="20" value="{{.Form.CmnaDest}}" class="field mt-1 {{if .Mal "CmnaDest"}}field-bad{{end}}" aria-required="true">
+          </label>
+          <label class="block text-sm">CiudadDest
+            <input id="ciudad_dest" name="ciudad_dest" maxlength="20" value="{{.Form.CiudadDest}}" class="field mt-1 {{if .Mal "CiudadDest"}}field-bad{{end}}" aria-required="true">
+          </label>
+        </div>
+      </section>
+
+      <section class="rounded-[1.6rem] bg-[#f6f1e7] p-5 shadow-[0_20px_50px_rgba(0,0,0,.18)] sm:p-7">
+        <div class="mb-5 flex items-baseline justify-between gap-3">
+          <h2 class="font-serif text-2xl">Detalle de mercadería</h2>
+          <span class="text-xs uppercase tracking-[0.14em] text-[#8a8174]">06</span>
+        </div>
+        <div id="detalle" x-data="detalle()" class="space-y-3">
+          <template x-for="(item, i) in items" :key="i">
+            <div class="grid gap-3 rounded-2xl border border-[#e4dccb] bg-white/70 p-3 sm:grid-cols-6">
+              <label class="block text-sm sm:col-span-2">Nombre
+                <input class="field mt-1" :name="`items[${i}].nombre`" x-model="item.nombre" maxlength="80">
+              </label>
+              <label class="block text-sm">Cantidad
+                <input class="field mt-1" :name="`items[${i}].cantidad`" x-model="item.cantidad" inputmode="decimal">
+              </label>
+              <label class="block text-sm">Unidad
+                <input class="field mt-1 uppercase" :name="`items[${i}].unidad`" x-model="item.unidad" maxlength="4" list="unidades">
+              </label>
+              <label class="block text-sm">Precio
+                <input class="field mt-1" :name="`items[${i}].precio`" x-model="item.precio" inputmode="decimal">
+              </label>
+              <label class="block text-sm">Monto
+                <input class="field mt-1" :name="`items[${i}].monto`" x-model="item.monto" inputmode="numeric">
+              </label>
+              <label class="block text-sm sm:col-span-4">Tratamiento
+                <select class="field mt-1" :name="`items[${i}].indexe`" x-model="item.indexe">
+                  <option value="0">Afecto: exige monto</option>
+                  <option value="1">Exento</option>
+                  <option value="2">No facturable</option>
+                </select>
+              </label>
+              <div class="flex items-end sm:col-span-2">
+                <button type="button" class="text-sm text-[#9b2c2c] underline-offset-2 hover:underline" @click="quitar(i)">Quitar ítem</button>
+              </div>
+            </div>
+          </template>
+          <button type="button" class="rounded-full bg-[#14221c] px-4 py-2 text-sm text-[#f6f1e7]" @click="agregar()">Agregar ítem</button>
+        </div>
+        <datalist id="unidades">
+          <option value="UN"></option>
+          <option value="KG"></option>
+          <option value="LT"></option>
+          <option value="MT"></option>
+          <option value="M2"></option>
+          <option value="M3"></option>
+          <option value="CJ"></option>
+        </datalist>
+        <noscript>
+          <p class="mt-3 text-sm">Sin JavaScript puede informar un ítem en esta fila.</p>
+          <div class="mt-2 grid gap-3 sm:grid-cols-3">
+            <input class="field" name="items[0].nombre" placeholder="Nombre">
+            <input class="field" name="items[0].cantidad" placeholder="Cantidad">
+            <input class="field" name="items[0].unidad" value="UN" placeholder="Unidad">
+            <input class="field" name="items[0].precio" placeholder="Precio">
+            <input class="field" name="items[0].monto" placeholder="Monto">
+            <select class="field" name="items[0].indexe">
+              <option value="0">Afecto</option>
+              <option value="1">Exento</option>
+              <option value="2">No facturable</option>
+            </select>
+          </div>
+        </noscript>
+      </section>
+    </form>
+
+    <aside class="lg:sticky lg:top-6 lg:self-start">
+      <div id="panel-validacion" class="rounded-[1.6rem] bg-[#fffdf8] p-5 shadow-[0_20px_50px_rgba(0,0,0,.22)]">
+        {{template "panel" .}}
+      </div>
+    </aside>
+  </main>
+
+  <div class="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-[#101814]/95 px-4 py-3 backdrop-blur">
+    <div class="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row">
+      <button type="button"
+        class="rounded-full bg-[#c4622d] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+        hx-post="/validar"
+        hx-target="#panel-validacion"
+        hx-include="#form-guia"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this">
+        <span class="label-idle">Validar cumplimiento Res. 154</span>
+        <span class="label-busy">Validando…</span>
+      </button>
+      <button type="submit" form="form-guia" formaction="/descargar/xml" formmethod="post" class="rounded-full bg-[#f6f1e7] px-4 py-3 text-sm font-semibold text-[#14221c]">Descargar XML (DTE)</button>
+      <button type="submit" form="form-guia" formaction="/descargar/pdf" formmethod="post" class="rounded-full border border-[#f6f1e7]/40 px-4 py-3 text-sm font-semibold text-[#f6f1e7]">Descargar PDF guía</button>
+    </div>
+  </div>
+
+  <script>
+    function detalle() {
+      const inicial = {{.ItemsJSON}};
+      const vacio = () => ({ nombre: "", cantidad: "", unidad: "UN", precio: "", monto: "", indexe: "0" });
+      return {
+        items: Array.isArray(inicial) && inicial.length ? inicial : [vacio()],
+        agregar() { if (this.items.length < 60) this.items.push(vacio()); },
+        quitar(i) { if (this.items.length > 1) this.items.splice(i, 1); }
+      };
+    }
+
+    function asignar(id, valor) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = valor;
+    }
+
+    function cargarEjemplo() {
+      const datos = {
+        folio: "152",
+        fch_emis: "2026-11-02",
+        ind_traslado: "1",
+        rut_emisor: "76.123.456-0",
+        rzn_soc: "Molinos del Valle SpA",
+        giro_emis: "Elaboración de productos de molinería",
+        acteco: "106101",
+        rut_recep: "76.543.210-3",
+        rzn_soc_recep: "Panaderia Sur Ltda",
+        giro_recep: "Elaboración de pan",
+        dir_recep: "Av. Costanera 450",
+        cmna_recep: "Concepcion",
+        rut_chofer: "15.678.932-1",
+        nombre_chofer: "JUAN PEDRO SOTO LAGOS",
+        patente: "ABCD12",
+        patente_carro: "XY1234",
+        rut_trans: "99.999.999-9",
+        fch_salida: "2026-11-02",
+        hra_salida: "08:30:00",
+        fch_llegada: "2026-11-03",
+        motivo_multidia: "Traslado interregional con pernocta en ruta",
+        dir_origen: "Camino Industrial 1200",
+        cmna_origen: "Pudahuel",
+        ciudad_origen: "Santiago",
+        dir_dest: "Av. Costanera 450",
+        cmna_dest: "Concepcion",
+        ciudad_dest: "Concepcion"
+      };
+      Object.entries(datos).forEach(([id, valor]) => asignar(id, valor));
+      document.getElementById("modo_tercero").checked = true;
+      const multi = document.getElementById("duracion_multidia");
+      multi.checked = true;
+      multi.dispatchEvent(new Event("change", { bubbles: true }));
+      const nodo = document.getElementById("detalle");
+      if (window.Alpine && nodo) {
+        Alpine.$data(nodo).items = [
+          { nombre: "Harina de trigo", cantidad: "10", unidad: "KG", precio: "1200", monto: "12000", indexe: "0" },
+          { nombre: "Sacos de papel", cantidad: "5", unidad: "UN", precio: "", monto: "0", indexe: "1" }
+        ];
+      }
+    }
+  </script>
+  <script defer src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js"></script>
+</body>
+</html>
+{{end}}
